@@ -1,0 +1,32 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    container_name: cs-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: salonbot
+      POSTGRES_USER: salonbot
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    ports:
+      # 5433 on the host so a local Postgres install can keep 5432
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./sql:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U salonbot -d salonbot"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - n8n
+
+volumes:
+  pgdata:
+
+networks:
+  # Joins the network the existing n8n container already runs on, so n8n can
+  # reach this database at host "cs-postgres", port 5432.
+  n8n:
+    external: true
+    name: n8n_default

@@ -150,6 +150,10 @@ activemq-data/
 # Environments
 .env
 .envrc
+
+# Real customer conversations: names, phone numbers, email addresses
+data/
+*.pdf
 .venv
 env/
 venv/
