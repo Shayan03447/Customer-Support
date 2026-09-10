@@ -36,6 +36,8 @@ META = re.compile(
     re.I,
 )
 
+SECTION_NUM = re.compile(r"^\d+\.\s*")
+
 
 def clean(text: str) -> str:
     text = EVIDENCE.sub("", text)
@@ -108,6 +110,7 @@ def build(md_path: Path, tenant_id: str):
 
     chunks = []
     for heading, body in sections:
+        heading = SECTION_NUM.sub("", heading)
         if not body.strip() or heading.startswith(SKIP_SECTIONS):
             continue
 
