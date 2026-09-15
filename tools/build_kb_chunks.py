@@ -132,8 +132,7 @@ def build(md_path: Path, tenant_id: str):
                 "topic": heading,
                 "content": f"{salon} — {heading}. {text}",
                 "confidence": confidence,
-                # tenant_id is duplicated into the metadata because the n8n
-                # PGVector node filters on metadata, not on table columns.
+                
                 "metadata": {
                     "tenant_id": tenant_id,
                     "source": md_path.name,

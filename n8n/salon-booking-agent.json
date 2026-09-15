@@ -341,7 +341,7 @@
     {
       "parameters": {
         "descriptionType": "manual",
-        "toolDescription": "Hand this conversation to salon staff. Call it for complaints, refunds, unknown prices, discount requests, or when the customer asks for the owner.",
+        "toolDescription": "Hand this conversation to salon staff. Call it for complaints or service problems, refunds and deposit disputes, any price you cannot confirm from search_knowledge, styles not on the price sheet, discount requests or old promo codes, sensitive scalp / thin hair / hair-loss questions, changes to an appointment that already has a paid deposit, collaboration or free-service requests, or when the customer asks for the owner or a phone call. After calling this, stop replying in the thread.",
         "operation": "appendOrUpdate",
         "documentId": { "__rl": true, "value": "PUT_SHEET_ID_HERE", "mode": "id" },
         "sheetName": { "__rl": true, "value": "Leads", "mode": "name" },
