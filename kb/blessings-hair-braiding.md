@@ -196,7 +196,7 @@ Website copy also says “Individual Knotless Braids start at $200” and “Boh
 | Deposit | $30 |
 | Deposit required | Required for an appointment to be fully reserved |
 | Deposit methods | Cash, Zelle, or card when booked through the website |
-| Deposit send-to (electronic) | UNKNOWN — not listed in this package. If the customer asks where to send Zelle, escalate / confirm with owner at 805-849-9193. Do not invent a handle. |
+| Deposit send-to (Zelle) | +1 (424) 312-3535 |
 | Deposit applied to total | Yes |
 | Deposit proof | Screenshot of paid deposit required for confirmation when applicable |
 | Before deposit verified | Appointment details may be collected and a card sent, but the slot is **reserved / pending deposit** — not fully reserved |
@@ -233,7 +233,8 @@ Email: <email>
 Location: 923 East Broadway, Long Beach, CA 90802
 Appointment Deposit: $30 / Pending
 
-Once you’ve made the payment, please send a screenshot of your deposit here for confirmation.
+To secure it, send the $30 deposit via Zelle to +1 (424) 312-3535 (cash also accepted; card when booking through the website) and send a screenshot here.
+The deposit goes toward your total.
 ```
 
 After the screenshot is verified:
@@ -330,10 +331,10 @@ A: The appointment deposit is $30.
 A: Yes, your $30 deposit goes toward your service total.
 
 **Q: How can I pay the deposit?**  
-A: You can pay by Zelle or cash, and card payment is available when booking through the website.
+A: You can pay by Zelle or cash, and card payment is available when booking through the website. For Zelle, send $30 to +1 (424) 312-3535 and share a screenshot.
 
 **Q: Where do I send Zelle?**  
-A: The exact Zelle handle is not in this KB — escalate / confirm with the owner at 805-849-9193. Do not invent a number.
+A: Send the $30 deposit via Zelle to +1 (424) 312-3535, then send a screenshot here.
 
 **Q: Do I need to send proof of my deposit?**  
 A: Yes. Please send us a screenshot of your paid deposit so we can verify it and fully reserve your appointment.
@@ -390,7 +391,6 @@ AI / CST should escalate to the owner at **805-849-9193** when:
 - Customer requests an exception to normal salon policy
 - Alopecia / hair-loss / sensitive scalp needs a service-specific assessment
 - Customer requests an unapproved discount or a promo code not in Section 4
-- Zelle / payment handle is requested and is not listed here
 - Customer asks for the owner or a phone call
 - Any situation where the AI / CST would otherwise need to guess
 
