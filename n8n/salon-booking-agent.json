@@ -1,29 +1,33 @@
 {
-  "name": "Salon Booking Agent (multi-tenant)",
   "nodes": [
     {
       "parameters": {
-        "httpMethod": "GET",
         "path": "meta",
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000001",
+      "id": "95e7b072-eb7e-475e-892f-4b4925ec0e3d",
       "name": "Meta Verify (GET)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-1120, -160],
+      "position": [
+        -48,
+        80
+      ],
       "webhookId": "a1000000-0000-4000-8000-000000000001"
     },
     {
       "parameters": {
-        "jsCode": "// Meta calls this once when you subscribe the webhook.\nconst q = $input.first().json.query ?? {};\nif (q['hub.verify_token'] !== $env.META_VERIFY_TOKEN) {\n  throw new Error('verify token mismatch');\n}\nreturn [{ json: { challenge: q['hub.challenge'] } }];"
+        "jsCode": "const item = $input.first().json;\nconst q = { ...(item.query || {}), ...(item.params || {}), ...item };\nconst token = q['hub.verify_token'];\nconst challenge = q['hub.challenge'];\nconst expected = $env.META_VERIFY_TOKEN;\nif (!expected) throw new Error('META_VERIFY_TOKEN env is empty');\nif (token !== expected) throw new Error('verify token mismatch');\nif (!challenge) throw new Error('missing hub.challenge');\nreturn [{ json: { challenge: String(challenge) } }];"
       },
-      "id": "a1000000-0000-4000-8000-000000000002",
+      "id": "240e1d60-b98a-46d9-8334-b11eba011ba2",
       "name": "Check Verify Token",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-900, -160]
+      "position": [
+        176,
+        80
+      ]
     },
     {
       "parameters": {
@@ -31,36 +35,46 @@
         "responseBody": "={{ $json.challenge }}",
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000003",
+      "id": "91a61192-68c5-4138-b56d-39954892159e",
       "name": "Return Challenge",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [-680, -160]
+      "position": [
+        400,
+        80
+      ]
     },
-
     {
       "parameters": {
         "httpMethod": "POST",
         "path": "meta",
         "responseMode": "responseNode",
-        "options": { "rawBody": true }
+        "options": {
+          "rawBody": true
+        }
       },
-      "id": "a1000000-0000-4000-8000-000000000010",
+      "id": "dc7cd29a-3e2b-41b3-b6dc-7263976378b3",
       "name": "Meta Webhook (POST)",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
-      "position": [-1120, 120],
+      "position": [
+        -64,
+        368
+      ],
       "webhookId": "a1000000-0000-4000-8000-000000000010"
     },
     {
       "parameters": {
         "jsCode": "// Reject anything not signed with the Meta app secret. Without this,\n// anyone who learns the URL can inject fake customers into the CRM.\nconst crypto = require('crypto');\nconst item = $input.first();\n\nconst raw = item.binary?.data\n  ? Buffer.from(item.binary.data.data, 'base64').toString('utf8')\n  : JSON.stringify(item.json.body);\n\nconst expected = 'sha256=' + crypto\n  .createHmac('sha256', $env.META_APP_SECRET)\n  .update(raw, 'utf8')\n  .digest('hex');\n\nconst received = item.json.headers['x-hub-signature-256'];\nif (!received || received !== expected) {\n  throw new Error('invalid signature');\n}\n\nreturn [{ json: { body: JSON.parse(raw) } }];"
       },
-      "id": "a1000000-0000-4000-8000-000000000011",
+      "id": "caa33373-8792-4c8d-8b11-cae6c5271d83",
       "name": "Verify Signature",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
-      "position": [-900, 120]
+      "position": [
+        160,
+        368
+      ]
     },
     {
       "parameters": {
@@ -68,24 +82,16 @@
         "responseBody": "EVENT_RECEIVED",
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000012",
+      "id": "7a7ee263-bab0-498e-b9fd-06dc02ae4458",
       "name": "Ack 200",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
-      "position": [-680, 120],
+      "position": [
+        384,
+        368
+      ],
       "notes": "Must run before the AI. Meta retries anything slower than ~20s, and a retry means the customer gets the same reply twice."
     },
-    {
-      "parameters": {
-        "jsCode": "// Flatten Messenger and Instagram into one shape, and drop everything\n// that is not a real inbound message.\nconst body = $input.first().json.body;\nconst out = [];\n\nfor (const entry of body.entry ?? []) {\n  for (const ev of entry.messaging ?? []) {\n    if (ev.message?.is_echo) continue;          // our own message coming back\n    if (!ev.message && !ev.postback) continue;  // reads, deliveries, reactions\n\n    const referral = ev.referral ?? ev.postback?.referral ?? {};\n\n    out.push({ json: {\n      page_id:     entry.id,\n      platform:    body.object === 'instagram' ? 'instagram' : 'messenger',\n      sender_id:   ev.sender.id,\n      message_id:  ev.message?.mid ?? `pb_${ev.sender.id}_${ev.timestamp}`,\n      text:        ev.message?.text ?? ev.postback?.title ?? '',\n      has_media:   Boolean(ev.message?.attachments?.length),\n      // Only present on the first message of an ad-driven thread. If it is\n      // not captured here, ad attribution is lost for good.\n      ad_id:       referral.ad_id ?? null,\n      ad_ref:      referral.ref ?? null,\n      ts:          ev.timestamp,\n    }});\n  }\n}\n\nreturn out;"
-      },
-      "id": "a1000000-0000-4000-8000-000000000013",
-      "name": "Normalize Events",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
-      "position": [-460, 120]
-    },
-
     {
       "parameters": {
         "operation": "executeQuery",
@@ -94,12 +100,21 @@
           "queryReplacement": "={{ [$json.page_id] }}"
         }
       },
-      "id": "a1000000-0000-4000-8000-000000000020",
+      "id": "7206b989-5c42-4396-a2a7-ef2d240b640a",
       "name": "Tenant Lookup",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [-240, 120],
+      "position": [
+        832,
+        368
+      ],
       "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "7BHWCIZ1zQtbtBLm",
+          "name": "Postgres account"
+        }
+      },
       "notes": "No row means an unknown page ID: a misconfiguration, never a customer."
     },
     {
@@ -107,15 +122,24 @@
         "operation": "executeQuery",
         "query": "INSERT INTO seen_messages (message_id)\nVALUES ($1)\nON CONFLICT (message_id) DO NOTHING\nRETURNING message_id;",
         "options": {
-          "queryReplacement": "={{ [$('Normalize Events').item.json.message_id] }}"
+          "queryReplacement": "={{ [$('Normalize Events old1').item.json.message_id] }}"
         }
       },
-      "id": "a1000000-0000-4000-8000-000000000021",
+      "id": "52501b5e-31b5-4a63-8468-90e922811053",
       "name": "Dedupe",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [-20, 120],
+      "position": [
+        1056,
+        368
+      ],
       "alwaysOutputData": true,
+      "credentials": {
+        "postgres": {
+          "id": "7BHWCIZ1zQtbtBLm",
+          "name": "Postgres account"
+        }
+      },
       "notes": "Returns a row only the first time this message_id is seen. Kills duplicate replies caused by Meta retries."
     },
     {
@@ -132,7 +156,11 @@
               "id": "new-msg",
               "leftValue": "={{ $json.message_id }}",
               "rightValue": "",
-              "operator": { "type": "string", "operation": "exists", "singleValue": true }
+              "operator": {
+                "type": "string",
+                "operation": "exists",
+                "singleValue": true
+              }
             }
           ],
           "combinator": "and"
@@ -140,75 +168,114 @@
         "looseTypeValidation": true,
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000022",
+      "id": "29ba0035-a040-4cd1-b73d-da5646e59af8",
       "name": "Is New Message?",
       "type": "n8n-nodes-base.if",
       "typeVersion": 2.2,
-      "position": [200, 120]
+      "position": [
+        1280,
+        368
+      ]
     },
     {
       "parameters": {
         "operation": "executeQuery",
         "query": "INSERT INTO messages (tenant_id, platform, sender_id, direction, text, ad_id)\nVALUES ($1, $2, $3, 'in', $4, $5);",
         "options": {
-          "queryReplacement": "={{ [$('Tenant Lookup').item.json.tenant_id, $('Normalize Events').item.json.platform, $('Normalize Events').item.json.sender_id, $('Normalize Events').item.json.text, $('Normalize Events').item.json.ad_id] }}"
+          "queryReplacement": "=={{ [$('Tenant Lookup').item.json.tenant_id, $('Normalize Events old1').item.json.platform, $('Normalize Events old1').item.json.sender_id, $('Normalize Events old1').item.json.text, $('Normalize Events old1').item.json.ad_id ?? null] }}"
         }
       },
-      "id": "a1000000-0000-4000-8000-000000000023",
+      "id": "1ccb30d5-86ec-41f6-bb6f-8875cb7387c0",
       "name": "Log Inbound",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [420, 120]
+      "position": [
+        1504,
+        368
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "7BHWCIZ1zQtbtBLm",
+          "name": "Postgres account"
+        }
+      }
     },
     {
-      "parameters": {
-        "amount": 5
-      },
-      "id": "a1000000-0000-4000-8000-000000000024",
+      "parameters": {},
+      "id": "847f2e43-c7f0-41cb-9252-449181dce28d",
       "name": "Debounce 5s",
       "type": "n8n-nodes-base.wait",
       "typeVersion": 1.1,
-      "position": [640, 120],
+      "position": [
+        1712,
+        368
+      ],
       "webhookId": "a1000000-0000-4000-8000-000000000024",
       "notes": "Customers type in bursts ('hi' / 'how much for boho' / 'do you have blonde'). Without a pause the agent answers three times and reads as a bot."
     },
-
     {
       "parameters": {
         "promptType": "define",
-        "text": "={{ $('Normalize Events').item.json.text }}",
+        "text": "={{ $('Normalize Events old1').item.json.text }}",
         "options": {
-          "systemMessage": "=You are the booking assistant for {{ $('Tenant Lookup').item.json.salon_name }}, a hair braiding salon. You reply to customers in Instagram and Facebook DMs. Most of them just clicked an ad, so they are ready to buy — your job is to answer their question and get them booked.\n\nCurrent date and time: {{ $now.setZone($('Tenant Lookup').item.json.timezone).toFormat('cccc dd LLL yyyy, h:mm a') }} ({{ $('Tenant Lookup').item.json.timezone }})\n\n## Voice\n\nWarm, short, confident. One to three sentences per message. Match the way a friendly salon receptionist texts. At most one emoji per message, except in the confirmation card.\n\nReply in the language the customer writes in. If they write in Spanish, answer in Spanish.\n\n## The booking flow\n\nFollow this order. Do not skip a step, do not do two at once.\n\n1. Greet, and answer whatever they actually asked.\n2. Give the price for their style. Always a real number.\n3. Ask for the date and time they want.\n4. Ask which location is convenient (only if they have not said).\n5. Ask for name, phone number, and email in one message.\n6. Check the calendar for that slot.\n7. Send the reservation card.\n8. Give deposit instructions and wait for the screenshot.\n9. Once the screenshot arrives, mark the booking confirmed.\n\n## Reservation card\n\nSend this only after you have name, phone, email, style, date, time, and location. Exactly one address.\n\n📋 Your slot is reserved — pending deposit\nStyle: <style>\nDate: <MM/DD/YYYY>\nTime: <h:mm AM/PM>\nName: <full name>\nPhone: <phone>\nEmail: <email>\nLocation: <ONE address>\n\nTo secure it, send the ${{ $('Tenant Lookup').item.json.deposit_amount }} deposit via {{ $('Tenant Lookup').item.json.deposit_methods }} to {{ $('Tenant Lookup').item.json.deposit_handle }} and send a screenshot here. The deposit goes toward your total.\n\nOnly after the screenshot arrives:\n\n✅ Your appointment is confirmed! 💇🏽‍♀️\n(repeat the details, then:)\n💕 We'd love a review after your appointment: {{ $('Tenant Lookup').item.json.review_link }}\n\n## Hard rules\n\n- NEVER say \"confirmed\" before the deposit screenshot arrives. Before that the wording is always \"reserved — pending deposit\".\n- NEVER put two addresses on one card. Ask which location if unsure.\n- NEVER invent a price. If the style is not in your knowledge base, say you will check that exact price and call escalate_to_human.\n- NEVER guess a date. If the customer says \"Thursday\", state the calendar date back to them and get a yes before writing the card.\n- NEVER change a date or time on your own after a card has been sent.\n- Phone goes in the phone field, email in the email field. Ask for whichever is missing.\n- Do not repeat a question the customer already answered. Read the history first.\n- Never end a message with a dead end like \"let me know if you'd like to come in\". Every message ends with a question or a clear next step.\n\n## Escalate to a human when\n\n- The customer is upset, complains, or asks for a refund\n- They want a discount beyond {{ $('Tenant Lookup').item.json.promos }}\n- They ask for a price you do not have\n- They ask for the owner or a phone call\n- They want to change an appointment that already has a paid deposit\n- You have replied twice and they still seem confused\n\nTell the customer a team member will follow up shortly, then call escalate_to_human and stop replying.\n\n## Tools\n\nCall search_knowledge before quoting any price, address, or policy. Do not answer those from memory.\nCall upsert_lead as soon as you learn a name, phone, email, or style interest — do not wait for the booking."
+          "systemMessage": "=You are the booking assistant for {{ $('Tenant Lookup').item.json.salon_name }}, a hair braiding salon. You reply to customers in Instagram and Facebook DMs. Most of them just clicked an ad, so they are ready to buy — your job is to answer their question and get them booked.\n\nCurrent date and time: {{ $now.setZone($('Tenant Lookup').item.json.timezone).toFormat('cccc dd LLL yyyy, h:mm a') }} ({{ $('Tenant Lookup').item.json.timezone }})\n\n## Voice\n\nWarm, short, confident. One to three sentences per message. Match the way a friendly salon receptionist texts. At most one emoji per message, except in the confirmation card.\n\nReply in the language the customer writes in. If they write in Spanish, answer in Spanish.\n\n## The booking flow\n\nFollow this order. Do not skip a step, do not do two at once.\n\n1. Greet, and answer whatever they actually asked.\n2. Give the price for their style. Always a real number.\n3. Ask for the date and time they want.\n4. Ask which location is convenient (only if they have not said).\n5. Ask for name, phone number, and email in one message.\n6. Check the calendar for that slot.\n7. Send the reservation card.\n8. Give deposit instructions and wait for the screenshot.\n9. Once the screenshot arrives, mark the booking confirmed.\n\n## Reservation card\n\nSend this only after you have name, phone, email, style, date, time, and location. Exactly one address.\n\n📋 Your slot is reserved — pending deposit\nStyle: <style>\nDate: <MM/DD/YYYY>\nTime: <h:mm AM/PM>\nName: <full name>\nPhone: <phone>\nEmail: <email>\nLocation: <ONE address>\n\nTo secure it, send the ${{ $('Tenant Lookup').item.json.deposit_amount }} deposit via {{ $('Tenant Lookup').item.json.deposit_methods }} to {{ $('Tenant Lookup').item.json.deposit_handle }} and send a screenshot here. The deposit goes toward your total.\n\nOnly after the screenshot arrives:\n\n✅ Your appointment is confirmed! 💇🏽‍♀️\n(repeat the details, then:)\n💕 We'd love a review after your appointment: {{ $('Tenant Lookup').item.json.review_link }}\n\n## Hard rules\n\n- NEVER say \"confirmed\" before the deposit screenshot arrives. Before that the wording is always \"reserved — pending deposit\".\n- NEVER put two addresses on one card. Ask which location if unsure.\n- Whenever you mention the deposit or Zelle number, always ask for a screenshot in the same message. Do not wait for the reservation card\n- NEVER invent a price. If the style is not in your knowledge base, say you will check that exact price and call escalate_to_human.\n- NEVER guess a date. If the customer says \"Thursday\", state the calendar date back to them and get a yes before writing the card.\n- NEVER change a date or time on your own after a card has been sent.\n- Phone goes in the phone field, email in the email field. Ask for whichever is missing.\n- Do not repeat a question the customer already answered. Read the history first.\n- Never end a message with a dead end like \"let me know if you'd like to come in\". Every message ends with a question or a clear next step.\n\n## Escalate to a human when\n\n- The customer is upset, complains, or asks for a refund\n- They want a discount beyond {{ $('Tenant Lookup').item.json.promos }}\n- They ask for a price you do not have\n- They ask for the owner or a phone call\n- They want to change an appointment that already has a paid deposit\n- You have replied twice and they still seem confused\n\nTell the customer a team member will follow up shortly, then call escalate_to_human and stop replying.\n\n## Tools\n\nCall search_knowledge before quoting any price, address, or policy. Do not answer those from memory.\nCall upsert_lead as soon as you learn a name, phone, email, or style interest — do not wait for the booking."
         }
       },
-      "id": "a1000000-0000-4000-8000-000000000030",
+      "id": "0b5f6d9b-a69f-459e-b453-423b5211de59",
       "name": "Booking Agent",
       "type": "@n8n/n8n-nodes-langchain.agent",
       "typeVersion": 1.7,
-      "position": [880, 120]
+      "position": [
+        1952,
+        368
+      ]
     },
     {
       "parameters": {
-        "model": { "__rl": true, "value": "gpt-4.1", "mode": "list" },
-        "options": { "temperature": 0.3 }
+        "model": {
+          "__rl": true,
+          "value": "gpt-4.1",
+          "mode": "list"
+        },
+        "options": {
+          "temperature": 0.3
+        }
       },
-      "id": "a1000000-0000-4000-8000-000000000031",
+      "id": "c865812e-a6a6-416f-8fee-839a5793a5cb",
       "name": "OpenAI Chat Model",
       "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
       "typeVersion": 1.2,
-      "position": [700, 380]
+      "position": [
+        1568,
+        640
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "ZOjKSzMRIRBwJTsY",
+          "name": "OpenAI account"
+        }
+      }
     },
     {
       "parameters": {
         "sessionIdType": "customKey",
-        "sessionKey": "={{ $('Tenant Lookup').item.json.tenant_id }}:{{ $('Normalize Events').item.json.sender_id }}",
+        "sessionKey": "={{ $('Tenant Lookup').item.json.tenant_id }}:{{ $('Normalize Events old1').item.json.sender_id }}",
         "contextWindowLength": 20
       },
-      "id": "a1000000-0000-4000-8000-000000000032",
+      "id": "451423b4-9825-4045-b20a-ca59fd196a40",
       "name": "Postgres Memory",
       "type": "@n8n/n8n-nodes-langchain.memoryPostgresChat",
       "typeVersion": 1.3,
-      "position": [860, 380],
+      "position": [
+        1744,
+        640
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "7BHWCIZ1zQtbtBLm",
+          "name": "Postgres account"
+        }
+      },
       "notes": "The session key MUST include tenant_id. With sender_id alone, one person messaging two salons would share a single history."
     },
     {
@@ -217,14 +284,10 @@
         "toolName": "search_knowledge",
         "toolDescription": "Prices, services, opening hours, locations, deposit rules and promotions for this salon. Call this before quoting any price, address or policy.",
         "tableName": "kb",
-        "topK": 4,
         "options": {
           "columnNames": {
             "values": {
-              "idColumnName": "id",
-              "vectorColumnName": "embedding",
-              "contentColumnName": "content",
-              "metadataColumnName": "metadata"
+              "contentColumnName": "content"
             }
           },
           "metadata": {
@@ -237,55 +300,71 @@
           }
         }
       },
-      "id": "a1000000-0000-4000-8000-000000000033",
+      "id": "d7669f42-17e2-47f0-b617-fc7fe9edec20",
       "name": "Company Knowledge",
       "type": "@n8n/n8n-nodes-langchain.vectorStorePGVector",
       "typeVersion": 1.1,
-      "position": [1020, 380],
+      "position": [
+        1872,
+        656
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "7BHWCIZ1zQtbtBLm",
+          "name": "Postgres account"
+        }
+      },
       "notes": "The tenant_id metadata filter is the only thing stopping one salon's prices from leaking into another salon's chat. Verify it in the UI before adding salon #2."
     },
     {
       "parameters": {
-        "options": { "dimensions": 1536 },
-        "model": "text-embedding-3-small"
+        "options": {
+          "dimensions": 1536
+        }
       },
-      "id": "a1000000-0000-4000-8000-000000000034",
+      "id": "537bf76e-1e2f-42c4-83ee-1bbf1fb7c2d2",
       "name": "Embeddings OpenAI",
       "type": "@n8n/n8n-nodes-langchain.embeddingsOpenAi",
       "typeVersion": 1.2,
-      "position": [1020, 600],
+      "position": [
+        1872,
+        848
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "ZOjKSzMRIRBwJTsY",
+          "name": "OpenAI account"
+        }
+      },
       "notes": "Must match the model used by tools/load_kb.py, or retrieval returns noise."
     },
     {
       "parameters": {
         "descriptionType": "manual",
         "toolDescription": "Check whether a date and time is free before promising it. Input: timeMin and timeMax in ISO 8601.",
-        "resource": "event",
         "operation": "getAll",
         "calendar": {
           "__rl": true,
           "value": "={{ $('Tenant Lookup').item.json.calendar_id }}",
           "mode": "id"
         },
-        "returnAll": false,
         "limit": 10,
-        "options": {
-          "timeMin": "={{ $fromAI('timeMin', 'start of the window, ISO 8601') }}",
-          "timeMax": "={{ $fromAI('timeMax', 'end of the window, ISO 8601') }}"
-        }
+        "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000035",
+      "id": "1992ac8a-0d18-4b65-9619-14f3082f64aa",
       "name": "check_availability",
       "type": "n8n-nodes-base.googleCalendarTool",
       "typeVersion": 1.3,
-      "position": [1180, 380]
+      "position": [
+        2160,
+        640
+      ],
+      "disabled": true
     },
     {
       "parameters": {
         "descriptionType": "manual",
         "toolDescription": "Create the appointment in the salon calendar. Only call this after the customer has given name, phone, email, style, date, time and location.",
-        "resource": "event",
-        "operation": "create",
         "calendar": {
           "__rl": true,
           "value": "={{ $('Tenant Lookup').item.json.calendar_id }}",
@@ -294,117 +373,446 @@
         "start": "={{ $fromAI('start', 'appointment start, ISO 8601') }}",
         "end": "={{ $fromAI('end', 'appointment end, ISO 8601') }}",
         "additionalFields": {
-          "summary": "={{ $fromAI('summary', 'style and customer name, e.g. Boho braids - Priscilla') }}",
-          "description": "={{ $fromAI('description', 'phone, email, location and deposit status') }}"
+          "description": "={{ $fromAI('description', 'phone, email, location and deposit status') }}",
+          "summary": "={{ $fromAI('summary', 'style and customer name, e.g. Boho braids - Priscilla') }}"
         }
       },
-      "id": "a1000000-0000-4000-8000-000000000036",
+      "id": "28170762-11ce-42a2-8d0a-ea93a243b259",
       "name": "create_booking",
       "type": "n8n-nodes-base.googleCalendarTool",
       "typeVersion": 1.3,
-      "position": [1340, 380]
+      "position": [
+        2320,
+        640
+      ],
+      "disabled": true
     },
     {
       "parameters": {
         "descriptionType": "manual",
         "toolDescription": "Save or update this customer in the CRM. Call it as soon as you learn a name, phone, email or style interest — do not wait for a booking.",
         "operation": "appendOrUpdate",
-        "documentId": { "__rl": true, "value": "PUT_SHEET_ID_HERE", "mode": "id" },
-        "sheetName": { "__rl": true, "value": "Leads", "mode": "name" },
+        "documentId": {
+          "__rl": true,
+          "mode": "id",
+          "value": "1ojZ3g_0t9QBXAVz_6nxnU0RyjEUoGkPjnhM7nEJmny8"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "gid=0",
+          "mode": "list",
+          "cachedResultName": "Leads",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1ojZ3g_0t9QBXAVz_6nxnU0RyjEUoGkPjnhM7nEJmny8/edit#gid=0"
+        },
         "columns": {
           "mappingMode": "defineBelow",
-          "matchingColumns": ["lead_key"],
           "value": {
-            "lead_key": "={{ $('Tenant Lookup').item.json.tenant_id }}:{{ $('Normalize Events').item.json.platform }}:{{ $('Normalize Events').item.json.sender_id }}",
             "tenant_id": "={{ $('Tenant Lookup').item.json.tenant_id }}",
-            "platform": "={{ $('Normalize Events').item.json.platform }}",
-            "sender_id": "={{ $('Normalize Events').item.json.sender_id }}",
-            "ad_id": "={{ $('Normalize Events').item.json.ad_id }}",
+            "platform": "={{ $('Normalize Events old1').item.json.platform }}",
+            "sender_id": "={{ $('Normalize Events old1').item.json.sender_id }}",
+            "ad_id": "={{ $('Normalize Events old1').item.json.ad_id }}",
             "name": "={{ $fromAI('name', 'customer full name', 'string', '') }}",
-            "phone": "={{ $fromAI('phone', 'customer phone number', 'string', '') }}",
-            "email": "={{ $fromAI('email', 'customer email', 'string', '') }}",
+            "phone": "=\t {{ $fromAI('phone', 'customer phone number', 'string', '') }}",
+            "email": "=\t {{ $fromAI('email', 'customer email', 'string', '') }}",
             "style_interest": "={{ $fromAI('style_interest', 'hairstyle they asked about', 'string', '') }}",
-            "stage": "={{ $fromAI('stage', 'one of: new, quoted, details_collected, reserved, deposit_paid, completed, lost') }}",
-            "notes": "={{ $fromAI('notes', 'anything worth remembering', 'string', '') }}",
-            "last_seen": "={{ $now.toISO() }}"
-          }
+            "stage": "=={{ $fromAI('stage', 'Booking stage. Must be exactly one of: new, quoted, details_collected, reserved, deposit_paid, completed, lost', 'string') }}",
+            "notes": "=\t {{ $fromAI('notes', 'anything worth remembering', 'string', '') }}",
+            "last_seen": "=\t {{ $now.toISO() }}",
+            "handoff": "=",
+            "lead_key": "={{ $('Tenant Lookup').item.json.tenant_id }}:{{ $('Normalize Events old1').item.json.platform }}:{{ $('Normalize Events old1').item.json.sender_id }}"
+          },
+          "matchingColumns": [
+            "lead_key"
+          ],
+          "schema": [
+            {
+              "id": "lead_key",
+              "displayName": "lead_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "tenant_id",
+              "displayName": "tenant_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sender_id",
+              "displayName": "sender_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ad_id",
+              "displayName": "ad_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "style_interest",
+              "displayName": "style_interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "stage",
+              "displayName": "stage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_seen",
+              "displayName": "last_seen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "handoff",
+              "displayName": "handoff",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000037",
+      "id": "b87c612e-1cc7-4239-bc26-d910be03aa70",
       "name": "upsert_lead",
       "type": "n8n-nodes-base.googleSheetsTool",
       "typeVersion": 4.5,
-      "position": [1500, 380],
+      "position": [
+        2464,
+        640
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jb0i0souZivV9u1s",
+          "name": "Google Sheets account"
+        }
+      },
       "notes": "Set documentId to the CRM spreadsheet. 'reserved' and 'deposit_paid' are deliberately separate stages."
     },
     {
       "parameters": {
         "descriptionType": "manual",
-        "toolDescription": "Hand this conversation to salon staff. Call it for complaints or service problems, refunds and deposit disputes, any price you cannot confirm from search_knowledge, styles not on the price sheet, discount requests or old promo codes, sensitive scalp / thin hair / hair-loss questions, changes to an appointment that already has a paid deposit, collaboration or free-service requests, or when the customer asks for the owner or a phone call. After calling this, stop replying in the thread.",
+        "toolDescription": "Append or update row in sheet in Google Sheets.Hand this conversation to salon staff. Call it for complaints or service problems, refunds and deposit disputes, any price you cannot confirm from search_knowledge, styles not on the price sheet, discount requests or old promo codes, sensitive scalp / thin hair / hair-loss questions, changes to an appointment that already has a paid deposit, collaboration or free-service requests, or when the customer asks for the owner or a phone call. After calling this, stop replying in the thread.",
         "operation": "appendOrUpdate",
-        "documentId": { "__rl": true, "value": "PUT_SHEET_ID_HERE", "mode": "id" },
-        "sheetName": { "__rl": true, "value": "Leads", "mode": "name" },
+        "documentId": {
+          "__rl": true,
+          "value": "1ojZ3g_0t9QBXAVz_6nxnU0RyjEUoGkPjnhM7nEJmny8",
+          "mode": "id"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "Leads",
+          "mode": "name"
+        },
         "columns": {
           "mappingMode": "defineBelow",
-          "matchingColumns": ["lead_key"],
           "value": {
-            "lead_key": "={{ $('Tenant Lookup').item.json.tenant_id }}:{{ $('Normalize Events').item.json.platform }}:{{ $('Normalize Events').item.json.sender_id }}",
+            "lead_key": "={{ $('Tenant Lookup').item.json.tenant_id }}:{{ $('Normalize Events old1').item.json.platform }}:{{ $('Normalize Events old1').item.json.sender_id }}",
             "handoff": "yes",
             "notes": "={{ $fromAI('reason', 'why this needs a human') }}",
             "last_seen": "={{ $now.toISO() }}"
-          }
+          },
+          "matchingColumns": [
+            "lead_key"
+          ],
+          "schema": [
+            {
+              "id": "lead_key",
+              "displayName": "lead_key",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "tenant_id",
+              "displayName": "tenant_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "platform",
+              "displayName": "platform",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "sender_id",
+              "displayName": "sender_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "ad_id",
+              "displayName": "ad_id",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "phone",
+              "displayName": "phone",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "email",
+              "displayName": "email",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "style_interest",
+              "displayName": "style_interest",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "stage",
+              "displayName": "stage",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "last_seen",
+              "displayName": "last_seen",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "handoff",
+              "displayName": "handoff",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
         },
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000038",
+      "id": "25ca0a85-a58b-49c6-b852-c6192e0734d2",
       "name": "escalate_to_human",
       "type": "n8n-nodes-base.googleSheetsTool",
       "typeVersion": 4.5,
-      "position": [1660, 380]
+      "position": [
+        2624,
+        640
+      ],
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "jb0i0souZivV9u1s",
+          "name": "Google Sheets account"
+        }
+      }
     },
-
     {
       "parameters": {
         "rules": {
           "values": [
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $('Normalize Events').item.json.platform }}",
                     "rightValue": "messenger",
-                    "operator": { "type": "string", "operation": "equals" }
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
                   }
                 ],
                 "combinator": "and"
-              },
-              "outputKey": "messenger"
+              }
             },
             {
               "conditions": {
-                "options": { "caseSensitive": true, "typeValidation": "strict", "version": 2 },
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 2
+                },
                 "conditions": [
                   {
                     "leftValue": "={{ $('Normalize Events').item.json.platform }}",
                     "rightValue": "instagram",
-                    "operator": { "type": "string", "operation": "equals" }
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
                   }
                 ],
                 "combinator": "and"
-              },
-              "outputKey": "instagram"
+              }
             }
           ]
         },
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000040",
+      "id": "ccbf1352-ef97-42b5-b1cf-6b5569d44511",
       "name": "Route Channel",
       "type": "n8n-nodes-base.switch",
       "typeVersion": 3.2,
-      "position": [1240, 120]
+      "position": [
+        2320,
+        368
+      ]
     },
     {
       "parameters": {
@@ -424,11 +832,14 @@
         "jsonBody": "={{ JSON.stringify({ recipient: { id: $('Normalize Events').item.json.sender_id }, message: { text: $json.output }, messaging_type: 'RESPONSE' }) }}",
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000041",
+      "id": "14ea16e3-eadb-4f24-bb3b-4059d803a2c9",
       "name": "Send Messenger",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1480, 20],
+      "position": [
+        2560,
+        272
+      ],
       "notes": "Fails after 24h of customer silence. That is Meta's standard messaging window, not a bug — route those to human follow-up."
     },
     {
@@ -449,11 +860,14 @@
         "jsonBody": "={{ JSON.stringify({ recipient: { id: $('Normalize Events').item.json.sender_id }, message: { text: $json.output } }) }}",
         "options": {}
       },
-      "id": "a1000000-0000-4000-8000-000000000042",
+      "id": "e40bc0a7-dc0a-4111-9e9e-0422ee3f0bb4",
       "name": "Send Instagram",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
-      "position": [1480, 220]
+      "position": [
+        2560,
+        464
+      ]
     },
     {
       "parameters": {
@@ -463,46 +877,380 @@
           "queryReplacement": "={{ [$('Tenant Lookup').item.json.tenant_id, $('Normalize Events').item.json.platform, $('Normalize Events').item.json.sender_id, $('Booking Agent').item.json.output] }}"
         }
       },
-      "id": "a1000000-0000-4000-8000-000000000043",
+      "id": "46c46fe5-8485-45d1-9d5e-fba978b50a75",
       "name": "Log Outbound",
       "type": "n8n-nodes-base.postgres",
       "typeVersion": 2.6,
-      "position": [1720, 120]
+      "position": [
+        2800,
+        368
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "7BHWCIZ1zQtbtBLm",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        96,
+        752
+      ],
+      "id": "1b3b36dc-7899-4dc5-8dcf-ec8d6cafbd12",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "5c8dabf1-3e2a-472a-9502-67df772e266b",
+              "name": "page_id",
+              "value": "100000000000002",
+              "type": "string"
+            },
+            {
+              "id": "0c53c843-5709-45bd-b64b-c6609a72fac0",
+              "name": "platform",
+              "value": "messenger",
+              "type": "string"
+            },
+            {
+              "id": "2ad32349-22d9-4556-800f-60249b69ba6e",
+              "name": "sender_id",
+              "value": "test-user-1",
+              "type": "string"
+            },
+            {
+              "id": "c5e5b4f5-7606-4991-bf4b-fb8b92735bbe",
+              "name": "message_id",
+              "value": "test-msg-007",
+              "type": "string"
+            },
+            {
+              "id": "ac794eb1-26e0-4d03-8fd4-8cb7217b6b96",
+              "name": "text",
+              "value": "HAIR EXTENTIONS?",
+              "type": "string"
+            },
+            {
+              "id": "0ca9d487-da63-4fcc-826d-fd0775e49d35",
+              "name": "ad_id",
+              "value": "",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.5,
+      "position": [
+        320,
+        752
+      ],
+      "id": "a8cadb9f-cb6d-43a5-8fc0-98b096671f34",
+      "name": "Normalize Events old1"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Flatten Messenger and Instagram into one shape, and drop everything\n// that is not a real inbound message.\nconst body = $input.first().json.body;\nconst out = [];\n\nfor (const entry of body.entry ?? []) {\n  for (const ev of entry.messaging ?? []) {\n    if (ev.message?.is_echo) continue;          // our own message coming back\n    if (!ev.message && !ev.postback) continue;  // reads, deliveries, reactions\n\n    const referral = ev.referral ?? ev.postback?.referral ?? {};\n\n    out.push({ json: {\n      page_id:     entry.id,\n      platform:    body.object === 'instagram' ? 'instagram' : 'messenger',\n      sender_id:   ev.sender.id,\n      message_id:  ev.message?.mid ?? `pb_${ev.sender.id}_${ev.timestamp}`,\n      text:        ev.message?.text ?? ev.postback?.title ?? '',\n      has_media:   Boolean(ev.message?.attachments?.length),\n      // Only present on the first message of an ad-driven thread. If it is\n      // not captured here, ad attribution is lost for good.\n      ad_id:       referral.ad_id ?? null,\n      ad_ref:      referral.ref ?? null,\n      ts:          ev.timestamp,\n    }});\n  }\n}\n\nreturn out;"
+      },
+      "id": "070c4862-b5d6-42ef-a9cd-95c110c1212d",
+      "name": "Normalize Events",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        368
+      ]
     }
   ],
   "connections": {
-    "Meta Verify (GET)": { "main": [[{ "node": "Check Verify Token", "type": "main", "index": 0 }]] },
-    "Check Verify Token": { "main": [[{ "node": "Return Challenge", "type": "main", "index": 0 }]] },
-
-    "Meta Webhook (POST)": { "main": [[{ "node": "Verify Signature", "type": "main", "index": 0 }]] },
-    "Verify Signature": { "main": [[{ "node": "Ack 200", "type": "main", "index": 0 }]] },
-    "Ack 200": { "main": [[{ "node": "Normalize Events", "type": "main", "index": 0 }]] },
-    "Normalize Events": { "main": [[{ "node": "Tenant Lookup", "type": "main", "index": 0 }]] },
-    "Tenant Lookup": { "main": [[{ "node": "Dedupe", "type": "main", "index": 0 }]] },
-    "Dedupe": { "main": [[{ "node": "Is New Message?", "type": "main", "index": 0 }]] },
-    "Is New Message?": { "main": [[{ "node": "Log Inbound", "type": "main", "index": 0 }], []] },
-    "Log Inbound": { "main": [[{ "node": "Debounce 5s", "type": "main", "index": 0 }]] },
-    "Debounce 5s": { "main": [[{ "node": "Booking Agent", "type": "main", "index": 0 }]] },
-    "Booking Agent": { "main": [[{ "node": "Route Channel", "type": "main", "index": 0 }]] },
-
-    "OpenAI Chat Model": { "ai_languageModel": [[{ "node": "Booking Agent", "type": "ai_languageModel", "index": 0 }]] },
-    "Postgres Memory": { "ai_memory": [[{ "node": "Booking Agent", "type": "ai_memory", "index": 0 }]] },
-    "Company Knowledge": { "ai_tool": [[{ "node": "Booking Agent", "type": "ai_tool", "index": 0 }]] },
-    "Embeddings OpenAI": { "ai_embedding": [[{ "node": "Company Knowledge", "type": "ai_embedding", "index": 0 }]] },
-    "check_availability": { "ai_tool": [[{ "node": "Booking Agent", "type": "ai_tool", "index": 0 }]] },
-    "create_booking": { "ai_tool": [[{ "node": "Booking Agent", "type": "ai_tool", "index": 0 }]] },
-    "upsert_lead": { "ai_tool": [[{ "node": "Booking Agent", "type": "ai_tool", "index": 0 }]] },
-    "escalate_to_human": { "ai_tool": [[{ "node": "Booking Agent", "type": "ai_tool", "index": 0 }]] },
-
-    "Route Channel": {
+    "Meta Verify (GET)": {
       "main": [
-        [{ "node": "Send Messenger", "type": "main", "index": 0 }],
-        [{ "node": "Send Instagram", "type": "main", "index": 0 }]
+        [
+          {
+            "node": "Check Verify Token",
+            "type": "main",
+            "index": 0
+          }
+        ]
       ]
     },
-    "Send Messenger": { "main": [[{ "node": "Log Outbound", "type": "main", "index": 0 }]] },
-    "Send Instagram": { "main": [[{ "node": "Log Outbound", "type": "main", "index": 0 }]] }
+    "Check Verify Token": {
+      "main": [
+        [
+          {
+            "node": "Return Challenge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Meta Webhook (POST)": {
+      "main": [
+        [
+          {
+            "node": "Verify Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Signature": {
+      "main": [
+        [
+          {
+            "node": "Ack 200",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ack 200": {
+      "main": [
+        [
+          {
+            "node": "Normalize Events",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Tenant Lookup": {
+      "main": [
+        [
+          {
+            "node": "Dedupe",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Dedupe": {
+      "main": [
+        [
+          {
+            "node": "Is New Message?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is New Message?": {
+      "main": [
+        [
+          {
+            "node": "Log Inbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Inbound": {
+      "main": [
+        [
+          {
+            "node": "Debounce 5s",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Debounce 5s": {
+      "main": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Booking Agent": {
+      "main": [
+        [
+          {
+            "node": "Route Channel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Company Knowledge": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embeddings OpenAI": {
+      "ai_embedding": [
+        [
+          {
+            "node": "Company Knowledge",
+            "type": "ai_embedding",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "check_availability": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "create_booking": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "upsert_lead": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "escalate_to_human": {
+      "ai_tool": [
+        [
+          {
+            "node": "Booking Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Route Channel": {
+      "main": [
+        [
+          {
+            "node": "Send Messenger",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Send Instagram",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Messenger": {
+      "main": [
+        [
+          {
+            "node": "Log Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send Instagram": {
+      "main": [
+        [
+          {
+            "node": "Log Outbound",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "Normalize Events old1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Events old1": {
+      "main": [
+        []
+      ]
+    },
+    "Normalize Events": {
+      "main": [
+        [
+          {
+            "node": "Tenant Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
   },
-  "settings": { "executionOrder": "v1" },
-  "pinData": {}
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "b4a2d83f26d6d1179ecf2c67506e2dc208c9026cce55e410b0b1dedf883065d2"
+  }
 }
